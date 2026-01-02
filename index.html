@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>闪记卡 Pro+ 生产力版</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-soft: #eef2ff;
+            --bg: #f1f5f9;
+            --card-bg: #ffffff;
+            --text-main: #1e293b;
+            --text-sub: #64748b;
+            --danger: #f43f5e;
+            --success: #10b981;
+            --warning: #f59e0b;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
+        body { background-color: var(--bg); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* --- 导航 --- */
+        header { background: var(--card-bg); padding: 0.8rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; }
+        .nav-slider { background: #f1f5f9; padding: 4px; border-radius: 12px; display: flex; }
+        .nav-slider button { border: none; padding: 8px 24px; border-radius: 8px; cursor: pointer; background: transparent; color: var(--text-sub); font-weight: 600; transition: 0.3s; }
+        .nav-slider button.active { color: var(--primary); background: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+
+        main { flex: 1; padding: 1.5rem; overflow-y: auto; display: flex; flex-direction: column; align-items: center; }
+        .view-section { width: 100%; max-width: 1000px; display: none; }
+        .view-section.active { display: block; animation: fadeIn 0.4s; }
+
+        /* --- 统计仪表盘 --- */
+        .dashboard { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; width: 100%; }
+        .stat-card { background: white; padding: 15px; border-radius: 15px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .stat-val { font-size: 1.5rem; font-weight: 800; color: var(--primary); }
+        .stat-label { font-size: 0.75rem; color: var(--text-sub); }
+
+        /* --- 学习卡片 --- */
+        .flashcard {
+            background: white; border-radius: 30px; padding: 4rem 2rem; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.05);
+            min-height: 480px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; width: 100%; position: relative;
+        }
+        .word-box { text-align: center; flex: 1; display: flex; flex-direction: column; justify-content: center; }
+        .main-word { font-size: 4rem; font-weight: 800; letter-spacing: -1px; }
+        .pos-tag { font-size: 1.1rem; color: var(--primary); font-style: italic; font-weight: 400; margin-left: 12px; }
+        
+        /* 操作区间距 */
+        .action-area { margin-top: 4rem; display: flex; gap: 2rem; justify-content: center; width: 100%; }
+        
+        /* 统一样式的控制条（白色背景卡片） */
+        .control-bar { background: white; padding: 12px 25px; border-radius: 15px; display: flex; gap: 15px; align-items: center; width: 100%; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 15px; }
+        .control-bar select { border: 1px solid #e2e8f0; padding: 6px 12px; border-radius: 8px; font-weight: 500; outline: none; }
+
+        .timer-wrap { width: 100%; height: 6px; background: #e2e8f0; position: absolute; top: 0; left: 0; border-radius: 30px 30px 0 0; overflow: hidden; }
+        .timer-bar { height: 100%; background: linear-gradient(90deg, var(--warning), var(--danger)); width: 100%; transition: width linear; }
+
+        /* --- 滑块按钮样式 --- */
+        .slider-switch {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.85rem;
+            color: var(--text-sub);
+        }
+        
+        .slider-container {
+            position: relative;
+            width: 52px;
+            height: 26px;
+        }
+        
+        .slider-checkbox {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .slider-track {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #e2e8f0;
+            transition: .3s;
+            border-radius: 34px;
+        }
+        
+        .slider-track:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+        
+        .slider-checkbox:checked + .slider-track {
+            background-color: var(--primary);
+        }
+        
+        .slider-checkbox:checked + .slider-track:before {
+            transform: translateX(26px);
+        }
+        
+        .slider-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 500;
+        }
+        
+        .slider-label.active {
+            color: var(--primary);
+        }
+
+        /* --- 词库列表 --- */
+        .batch-del { background: var(--danger); color: white; border: none; padding: 8px 15px; border-radius: 8px; cursor: pointer; display: none; font-weight: bold; }
+        .table-container { background: white; border-radius: 15px; overflow-x: auto; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 15px; text-align: left; border-bottom: 1px solid #f1f5f9; }
+        .editable:hover { background: var(--primary-soft); cursor: cell; }
+
+        .btn { padding: 10px 20px; border-radius: 10px; border: none; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-outline { background: white; border: 1px solid #e2e8f0; color: var(--text-sub); }
+
+        /* 翻译文本样式 */
+        .translation {
+            margin-top: 10px;
+            padding: 8px 15px;
+            background: var(--primary-soft);
+            border-radius: 10px;
+            color: var(--text-main);
+            font-size: 1rem;
+            line-height: 1.4;
+            max-width: 600px;
+            margin: 10px auto 0;
+            border-left: 3px solid var(--primary);
+        }
+
+        /* 当前单词熟悉度显示 */
+        .current-stage {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: var(--primary-soft);
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* 打印样式 - 纯净版 */
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            
+            .view-section.active,
+            .view-section.active * {
+                visibility: visible;
+            }
+            
+            .view-section.active {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                max-width: 100% !important;
+            }
+            
+            header, .nav-slider, .dashboard, .mode-toggle, .control-bar, .nav-slider, button, .timer-wrap,
+            #batch-del-btn, input[type="checkbox"], .slider-switch, .btn, .current-stage {
+                display: none !important;
+            }
+            
+            .table-container {
+                box-shadow: none;
+                border: 1px solid #ddd !important;
+                border-radius: 0 !important;
+                overflow: visible;
+            }
+            
+            table {
+                width: 100% !important;
+                border: 1px solid #ddd;
+                font-size: 12pt;
+            }
+            
+            th {
+                background-color: #f8f9fa !important;
+                color: #000 !important;
+                font-weight: bold;
+                border-bottom: 2px solid #ddd !important;
+            }
+            
+            td, th {
+                border: 1px solid #ddd !important;
+                padding: 10px !important;
+                color: #000 !important;
+            }
+            
+            tr:nth-child(even) {
+                background-color: #f9f9f9 !important;
+            }
+            
+            /* 隐藏复选框列 */
+            th:first-child,
+            td:first-child {
+                display: none !important;
+            }
+            
+            /* 隐藏不需要打印的列：例句、翻译、阶段 */
+            th:nth-child(5),
+            td:nth-child(5),
+            th:nth-child(6),
+            td:nth-child(6),
+            th:nth-child(7),
+            td:nth-child(7) {
+                display: none !important;
+            }
+            
+            /* 确保分页时不截断行 */
+            tr {
+                page-break-inside: avoid;
+            }
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+<header>
+    <div style="display:flex; align-items:center; gap:10px;">
+        <span style="font-size:1.5rem;">💎</span>
+        <h1 style="font-size:1.1rem;">闪记卡 Pro+</h1>
+    </div>
+    <div class="nav-slider">
+        <button onclick="app.switchTab('learning')" id="nav-learning" class="active">学习</button>
+        <button onclick="app.switchTab('library')" id="nav-library">词库</button>
+        <button onclick="app.switchTab('import')" id="nav-import">导入</button>
+    </div>
+</header>
+
+<main>
+    <section id="view-learning" class="view-section active">
+        <div class="dashboard">
+            <div class="stat-card"><div class="stat-val" id="stat-total">0</div><div class="stat-label">总词数</div></div>
+            <div class="stat-card"><div class="stat-val" id="stat-due">0</div><div class="stat-label">待复习</div></div>
+            <div class="stat-card"><div class="stat-val" id="stat-mastered">0</div><div class="stat-label">掌握度(Lv.5)</div></div>
+        </div>
+
+        <div class="control-bar">
+            <span style="font-size:0.85rem; color:var(--text-sub)">范围:</span>
+            <select id="study-scope" onchange="app.resetSession()"></select>
+            <span style="font-size:0.85rem; color:var(--text-sub); margin-left:10px;">限时:</span>
+            <select id="timer-setting">
+                <option value="0">关闭</option>
+                <option value="3">3秒 (极速)</option>
+                <option value="5" selected>5秒 (标准)</option>
+            </select>
+            <div style="flex:1; text-align:right;">
+                <div class="slider-switch">
+                    <span class="slider-label" id="slider-read-label">📖 识记</span>
+                    <div class="slider-container">
+                        <input type="checkbox" class="slider-checkbox" id="mode-slider" onchange="app.toggleMode()">
+                        <label class="slider-track" for="mode-slider"></label>
+                    </div>
+                    <span class="slider-label" id="slider-spell-label">✍️ 拼写</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="flashcard">
+            <div class="timer-wrap" id="timer-wrap"><div class="timer-bar" id="timer-bar"></div></div>
+            <div id="current-stage-display" class="current-stage" style="display:none;">
+                <span>熟悉度:</span>
+                <span id="current-stage-value">Lv.0</span>
+            </div>
+            <div class="word-box">
+                <div id="card-main-content"></div>
+                <div id="word-details" style="display:none; margin-top:40px; border-top:1px solid #f1f5f9; padding-top:30px;">
+                    <h2 id="detail-meaning" style="color:var(--primary); margin-bottom:10px;"></h2>
+                    <p id="detail-example" style="font-style:italic; color:var(--text-sub)"></p>
+                    <div id="detail-translation" class="translation"></div>
+                </div>
+            </div>
+            <div class="action-area" id="pre-reveal">
+                <button class="btn btn-primary" style="width:250px; justify-content:center; padding:15px;" onclick="app.reveal()">认不认识？</button>
+            </div>
+            <div class="action-area" id="post-reveal" style="display:none;">
+                <button class="btn btn-outline" style="flex:1; justify-content:center" onclick="app.handleResult(false)">忘了</button>
+                <button class="btn btn-success" style="flex:1; justify-content:center" onclick="app.handleResult(true)">记得</button>
+            </div>
+            <div class="action-area" id="spell-actions" style="display:none;">
+                <button class="btn btn-outline" onclick="app.giveHint()">💡 提示</button>
+                <button class="btn btn-primary" id="btn-chk" onclick="app.checkSpell()">核对</button>
+                <button class="btn btn-success" id="btn-nxt" style="display:none" onclick="app.next()">下一个</button>
+            </div>
+        </div>
+    </section>
+
+    <section id="view-library" class="view-section">
+        <div class="control-bar">
+            <input type="checkbox" id="master-check" onchange="app.toggleAll(this.checked)">
+            <button class="batch-del" id="batch-del-btn" onclick="app.deleteSelected()">删除选中</button>
+            <select id="lib-filter" onchange="app.renderLibrary()"></select>
+            <div style="flex:1; display:flex; gap:10px; justify-content:flex-end;">
+                <button class="btn btn-outline" onclick="app.exportCSV()">📤 导出 CSV</button>
+                <button class="btn btn-primary" onclick="window.print()">🖨️ 打印/PDF</button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead><tr><th></th><th>单词</th><th>词性</th><th>释义</th><th>例句</th><th>翻译</th><th>阶段</th></tr></thead>
+                <tbody id="library-tbody"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section id="view-import" class="view-section">
+        <div id="import-init">
+            <div style="border:3px dashed #cbd5e1; border-radius:30px; padding:100px; text-align:center; background:white; cursor:pointer;" 
+                 onclick="document.getElementById('file-input').click()">
+                <input type="file" id="file-input" hidden accept=".csv" onchange="app.handleFile(this.files[0])">
+                <div style="font-size:3rem">📥</div>
+                <h3>点击或拖拽上传 CSV</h3>
+                <p style="color:var(--text-sub); margin-top:10px;">支持格式：word, part_of_speech, meaning, example, translation, pronunciation, category, notes</p>
+            </div>
+        </div>
+        <div id="import-preview" style="display:none;">
+            <div class="control-bar">
+                <h3>检查并修改数据</h3>
+                <button class="btn btn-success" style="margin-left:auto" onclick="app.confirmImport()">存入词库</button>
+                <button class="btn btn-outline" onclick="location.reload()">取消</button>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead><tr><th>单词</th><th>词性</th><th>释义</th><th>例句</th><th>翻译</th><th>分类</th></tr></thead>
+                    <tbody id="preview-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</main>
+
+<script>
+class VocabApp {
+    constructor() {
+        this.db = JSON.parse(localStorage.getItem('vocab_v8')) || [];
+        this.queue = [];
+        this.currentIndex = 0;
+        this.mode = 'read';
+        this.isRevealed = false;
+        this.timer = null;
+        this.selectedSet = new Set();
+        this.init();
+    }
+
+    init() {
+        this.updateSelectors();
+        this.updateStats();
+        this.resetSession();
+        this.updateSliderLabels();
+        // 移除了空格键的事件监听
+    }
+
+    // --- 学习系统 ---
+    resetSession() {
+        const scope = document.getElementById('study-scope').value;
+        let list = (scope==='all') ? [...this.db] : (scope==='due') ? this.db.filter(w=>(w.nextReview||0)<=Date.now()) : this.db.filter(w=>w.category===scope);
+        this.queue = list.sort(()=>Math.random()-0.5).slice(0, 20);
+        this.currentIndex = 0;
+        this.renderCard();
+    }
+
+    renderCard() {
+        const main = document.getElementById('card-main-content');
+        const detail = document.getElementById('word-details');
+        this.isRevealed = false;
+        clearTimeout(this.timer);
+        document.getElementById('timer-wrap').style.display = 'none';
+
+        if(this.currentIndex >= this.queue.length) {
+            main.innerHTML = `<h2>✅ 复习结束</h2><button class="btn btn-primary" onclick="app.resetSession()" style="margin-top:20px">下一组</button>`;
+            detail.style.display = 'none';
+            document.getElementById('pre-reveal').style.display='none';
+            document.getElementById('post-reveal').style.display='none';
+            document.getElementById('current-stage-display').style.display='none';
+            return;
+        }
+
+        const word = this.queue[this.currentIndex];
+        
+        // 显示当前单词的熟悉度
+        const stageDisplay = document.getElementById('current-stage-display');
+        const stageValue = document.getElementById('current-stage-value');
+        stageValue.innerText = `Lv.${word.stage || 0}`;
+        stageDisplay.style.display = 'flex';
+        
+        if(this.mode === 'read') {
+            main.innerHTML = `<div class="main-word">${word.word}<span class="pos-tag">${word.pos||''}</span></div>`;
+            document.getElementById('detail-meaning').innerText = word.meaning;
+            document.getElementById('detail-example').innerText = word.example||'';
+            // 显示翻译（如果有的话）
+            if(word.translation) {
+                document.getElementById('detail-translation').innerText = word.translation;
+                document.getElementById('detail-translation').style.display = 'block';
+            } else {
+                document.getElementById('detail-translation').style.display = 'none';
+            }
+            detail.style.display = 'none';
+            document.getElementById('pre-reveal').style.display='flex';
+            document.getElementById('post-reveal').style.display='none';
+            document.getElementById('spell-actions').style.display='none';
+            this.speak(word.word);
+            this.startTimer();
+        } else {
+            main.innerHTML = `<div style="color:var(--text-sub); margin-bottom:15px;">${word.meaning} (${word.pos||''})</div><input type="text" id="spell-input" style="font-size:2rem; padding:15px; width:100%; border-radius:15px; border:2px solid #eee; text-align:center" autocomplete="off">`;
+            detail.style.display = 'none';
+            document.getElementById('pre-reveal').style.display='none';
+            document.getElementById('post-reveal').style.display='none';
+            document.getElementById('spell-actions').style.display='flex';
+            document.getElementById('btn-chk').style.display='block';
+            document.getElementById('btn-nxt').style.display='none';
+            setTimeout(()=>document.getElementById('spell-input').focus(), 50);
+        }
+    }
+
+    startTimer() {
+        const sec = parseInt(document.getElementById('timer-setting').value);
+        if(sec===0) return;
+        const bar = document.getElementById('timer-bar');
+        document.getElementById('timer-wrap').style.display='block';
+        bar.style.transition='none'; bar.style.width='100%';
+        setTimeout(()=>{ bar.style.transition=`width ${sec}s linear`; bar.style.width='0%'; }, 50);
+        this.timer = setTimeout(()=>{ if(!this.isRevealed) this.reveal(); }, sec*1000);
+    }
+
+    reveal() {
+        this.isRevealed = true;
+        clearTimeout(this.timer);
+        document.getElementById('timer-wrap').style.display='none';
+        document.getElementById('word-details').style.display='block';
+        document.getElementById('pre-reveal').style.display='none';
+        document.getElementById('post-reveal').style.display='flex';
+    }
+
+    handleResult(ok) { this.updateSRS(this.queue[this.currentIndex], ok); this.next(); }
+
+    checkSpell() {
+        const inp = document.getElementById('spell-input');
+        const word = this.queue[this.currentIndex];
+        const ok = inp.value.trim().toLowerCase() === word.word.toLowerCase();
+        this.isRevealed = true;
+        inp.style.borderColor = ok ? 'var(--success)' : 'var(--danger)';
+        if(!ok) document.getElementById('card-main-content').innerHTML += `<div style="color:var(--danger); font-size:1.5rem; margin-top:10px">${word.word}</div>`;
+        document.getElementById('btn-chk').style.display='none';
+        document.getElementById('btn-nxt').style.display='block';
+        this.updateSRS(word, ok);
+    }
+
+    updateSRS(word, ok) {
+        const item = this.db.find(w=>w.word===word.word);
+        if(item) {
+            item.stage = ok ? Math.min((item.stage||0)+1, 5) : 0;
+            item.nextReview = Date.now() + [0, 1, 3, 7, 15, 30][item.stage]*24*3600*1000;
+            localStorage.setItem('vocab_v8', JSON.stringify(this.db));
+            this.updateStats();
+        }
+    }
+
+    next() { this.currentIndex++; this.renderCard(); }
+
+    // --- 滑块按钮功能 ---
+    toggleMode() {
+        const slider = document.getElementById('mode-slider');
+        this.mode = slider.checked ? 'spell' : 'read';
+        this.updateSliderLabels();
+        this.resetSession();
+    }
+    
+    updateSliderLabels() {
+        const readLabel = document.getElementById('slider-read-label');
+        const spellLabel = document.getElementById('slider-spell-label');
+        const slider = document.getElementById('mode-slider');
+        
+        if(this.mode === 'read') {
+            readLabel.classList.add('active');
+            spellLabel.classList.remove('active');
+            slider.checked = false;
+        } else {
+            readLabel.classList.remove('active');
+            spellLabel.classList.add('active');
+            slider.checked = true;
+        }
+    }
+
+    // --- 词库管理 ---
+    renderLibrary() {
+        const filter = document.getElementById('lib-filter').value;
+        const tbody = document.getElementById('library-tbody');
+        tbody.innerHTML = '';
+        const list = filter==='all' ? this.db : this.db.filter(w=>w.category===filter);
+        list.forEach((w, index) => {
+            const isSel = this.selectedSet.has(w.word);
+            tbody.innerHTML += `<tr style="${isSel?'background:#f5f3ff':''}">
+                <td><input type="checkbox" ${isSel?'checked':''} onchange="app.toggleOne('${w.word}', this.checked)"></td>
+                <td contenteditable="true" class="editable" data-field="word" data-index="${this.db.indexOf(w)}" onblur="app.updateWordField(${index}, 'word', this.innerText)"><b>${w.word}</b></td>
+                <td contenteditable="true" class="editable" data-field="pos" data-index="${this.db.indexOf(w)}" onblur="app.updateWordField(${index}, 'pos', this.innerText)">${w.pos||''}</td>
+                <td contenteditable="true" class="editable" data-field="meaning" data-index="${this.db.indexOf(w)}" onblur="app.updateWordField(${index}, 'meaning', this.innerText)">${w.meaning}</td>
+                <td contenteditable="true" class="editable" data-field="example" data-index="${this.db.indexOf(w)}" onblur="app.updateWordField(${index}, 'example', this.innerText)" style="font-size:0.8rem; color:var(--text-sub)">${w.example||''}</td>
+                <td contenteditable="true" class="editable" data-field="translation" data-index="${this.db.indexOf(w)}" onblur="app.updateWordField(${index}, 'translation', this.innerText)" style="font-size:0.8rem; color:var(--text-sub)">${w.translation||''}</td>
+                <td>
+                    <select onchange="app.updateWordField(${index}, 'stage', this.value)" style="border:1px solid #e2e8f0; padding:5px 10px; border-radius:5px;">
+                        ${[0,1,2,3,4,5].map(lvl => `<option value="${lvl}" ${w.stage==lvl?'selected':''}>Lv.${lvl}</option>`).join('')}
+                    </select>
+                </td>
+            </tr>`;
+        });
+    }
+
+    // 更新单词字段
+    updateWordField(index, field, value) {
+        const word = this.db[index];
+        if (word) {
+            // 如果是单词字段，需要更新selectedSet中的引用
+            if (field === 'word' && this.selectedSet.has(word.word)) {
+                this.selectedSet.delete(word.word);
+                this.selectedSet.add(value);
+            }
+            
+            word[field] = field === 'stage' ? parseInt(value) : value;
+            localStorage.setItem('vocab_v8', JSON.stringify(this.db));
+            
+            // 如果当前在学习页面且更新的是正在显示的单词，刷新显示
+            if (document.getElementById('view-learning').classList.contains('active') && 
+                this.queue[this.currentIndex] && 
+                this.queue[this.currentIndex].word === word.word) {
+                this.queue[this.currentIndex] = {...word};
+                this.renderCard();
+            }
+        }
+    }
+
+    toggleOne(w, c) { if(c) this.selectedSet.add(w); else this.selectedSet.delete(w); this.updateBatchBtn(); this.renderLibrary(); }
+    toggleAll(c) {
+        const filter = document.getElementById('lib-filter').value;
+        const list = filter==='all' ? this.db : this.db.filter(w=>w.category===filter);
+        list.forEach(w=>c?this.selectedSet.add(w.word):this.selectedSet.delete(w.word));
+        this.updateBatchBtn(); this.renderLibrary();
+    }
+    updateBatchBtn() {
+        const btn = document.getElementById('batch-del-btn');
+        btn.style.display = this.selectedSet.size>0 ? 'block' : 'none';
+        btn.innerText = `删除已选 (${this.selectedSet.size})`;
+    }
+    deleteSelected() {
+        if(!confirm('确认删除选中单词？')) return;
+        this.db = this.db.filter(w=>!this.selectedSet.has(w.word));
+        this.selectedSet.clear();
+        localStorage.setItem('vocab_v8', JSON.stringify(this.db));
+        this.updateStats(); this.updateSelectors(); this.renderLibrary(); this.updateBatchBtn();
+        this.resetSession(); // 重置学习会话
+    }
+
+    exportCSV() {
+        const data = this.db.map(w=>({
+            单词:w.word, 
+            词性:w.pos, 
+            释义:w.meaning, 
+            例句:w.example, 
+            翻译:w.translation||'',
+            发音:w.pronunciation||'',
+            分类:w.category||'',
+            备注:w.notes||'',
+            阶段:w.stage
+        }));
+        const csv = Papa.unparse(data);
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(new Blob(["\ufeff"+csv], {type:'text/csv'}));
+        link.download = "我的词库导出.csv"; link.click();
+    }
+
+    // --- 导入系统 ---
+    handleFile(f) {
+        Papa.parse(f, { header:true, complete:(res)=>{
+            this.tempData = res.data.map(r=>({
+                word: r.word || '', 
+                pos: r.part_of_speech || r.pos || '', 
+                meaning: r.meaning || '',
+                example: r.example || '',
+                translation: r.translation || '',
+                pronunciation: r.pronunciation || '',
+                category: r.category || '默认',
+                notes: r.notes || ''
+            }));
+            document.getElementById('import-init').style.display='none';
+            document.getElementById('import-preview').style.display='block';
+            const tbody = document.getElementById('preview-tbody');
+            tbody.innerHTML = this.tempData.map((r,i)=>`<tr>
+                <td contenteditable="true" class="editable" onblur="app.tempData[${i}].word=this.innerText">${r.word}</td>
+                <td contenteditable="true" class="editable" onblur="app.tempData[${i}].pos=this.innerText">${r.pos}</td>
+                <td contenteditable="true" class="editable" onblur="app.tempData[${i}].meaning=this.innerText">${r.meaning}</td>
+                <td contenteditable="true" class="editable" onblur="app.tempData[${i}].example=this.innerText">${r.example}</td>
+                <td contenteditable="true" class="editable" onblur="app.tempData[${i}].translation=this.innerText">${r.translation}</td>
+                <td contenteditable="true" class="editable" onblur="app.tempData[${i}].category=this.innerText">${r.category}</td>
+            </tr>`).join('');
+        }});
+    }
+
+    confirmImport() {
+        this.tempData.forEach(item=>{ 
+            if(item.word) { 
+                const idx=this.db.findIndex(d=>d.word===item.word); 
+                if(idx>-1) Object.assign(this.db[idx], item); 
+                else this.db.push({...item, stage:0}); 
+            }
+        });
+        localStorage.setItem('vocab_v8', JSON.stringify(this.db)); 
+        location.reload();
+    }
+
+    // --- 基础工具 ---
+    speak(t) { window.speechSynthesis.cancel(); const m=new SpeechSynthesisUtterance(t); m.lang='en-US'; m.rate=0.9; window.speechSynthesis.speak(m); }
+    updateStats() {
+        document.getElementById('stat-total').innerText = this.db.length;
+        document.getElementById('stat-due').innerText = this.db.filter(w=>(w.nextReview||0)<=Date.now()).length;
+        document.getElementById('stat-mastered').innerText = this.db.filter(w=>w.stage>=5).length;
+    }
+    updateSelectors() {
+        const cats = [...new Set(this.db.map(w=>w.category||'默认'))];
+        const html = `<option value="due">📅 待复习</option><option value="all">📁 全部单词</option>` + cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+        document.getElementById('study-scope').innerHTML = html;
+        document.getElementById('lib-filter').innerHTML = `<option value="all">全部分类</option>` + cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+    }
+    
+    switchTab(t) { 
+        document.querySelectorAll('.view-section').forEach(s=>s.classList.toggle('active', s.id===`view-${t}`));
+        document.querySelectorAll('.nav-slider button').forEach(b=>b.classList.toggle('active', b.id===`nav-${t}`));
+        if(t==='library') this.renderLibrary();
+    }
+    giveHint() { const w=this.queue[this.currentIndex].word; document.getElementById('spell-input').placeholder=`${w[0]}... (${w.length}个字母)`; }
+}
+const app = new VocabApp();
+</script>
+</body>
+</html>
